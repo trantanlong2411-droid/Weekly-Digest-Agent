@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {config,quantity,normalizeBlock,lowerBound,sampleHeights,summarize,compare,highlights,buildDigest,DAY} from '../src/digest.mjs';
 import {DigestStore} from '../src/worker.mjs';
 test('weekly schedule defaults, configurable data window, and rate caps',()=>{
- assert.equal(config().days,7);assert.equal(config().samples,8);
+ assert.equal(config().days,7);assert.equal(config().samples,6);
  assert.equal(config({DIGEST_WINDOW_DAYS:'14',DIGEST_SAMPLE_BLOCKS:'9'}).days,14);
  assert.throws(()=>config({DIGEST_WINDOW_DAYS:'0'}));
  assert.equal(quantity('0xf4240'),1000000);assert.throws(()=>quantity('2'));
@@ -41,7 +41,7 @@ test('end-to-end sampled digest uses only official MCP block tools',async()=>{
     transactions:Array.from({length:n%12+1},(_,i)=>'0x'+i)};}
   },close:async()=>{}});
  const report=await buildDigest({},mock,1700000000000);
- assert.equal(report.source.tool,'get_block');assert.equal(report.current.sampledBlocks,8);
+ assert.equal(report.source.tool,'get_block');assert.equal(report.current.sampledBlocks,6);
  assert.equal(report.top3Events.length,3);assert.ok(report.top3Events.every(x=>x.url.includes('/block/')));
  assert.equal(report.settings.windowDays,7);
  assert.match(report.limitations,/NOT all transactions/);
@@ -52,7 +52,7 @@ test('Durable Object persists public digest history',async()=>{
  const object=new DigestStore({storage},{});
  const begin=await (await object.fetch(new Request('https://store/begin',{method:'POST',body:JSON.stringify({manual:true})}))).json();
  assert.equal(begin.granted,true);
- const report={id:'pharos-5-100',publishedAtUtc:new Date().toISOString(),settings:{eventDiscoveryVersion:2},top3Events:[{},{},{}]};
+ const report={id:'pharos-5-100',publishedAtUtc:new Date().toISOString(),settings:{eventDiscoveryVersion:3},top3Events:[{},{},{}]};
  const published=await (await object.fetch(new Request('https://store/publish',{method:'POST',body:JSON.stringify(report)}))).json();
  assert.equal(published.stored,true);
  const saved=await (await object.fetch(new Request('https://store/read'))).json();

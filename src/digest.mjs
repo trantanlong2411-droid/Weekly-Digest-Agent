@@ -2,7 +2,7 @@ import {connect,MCP_URL} from './mcp.mjs';
 export const EXPLORER='https://pharosscan.xyz/block/';
 export const DAY=86400;
 export function config(env={}){
- const days=Number(env.DIGEST_WINDOW_DAYS??7),samples=Number(env.DIGEST_SAMPLE_BLOCKS??8);
+ const days=Number(env.DIGEST_WINDOW_DAYS??7),samples=Number(env.DIGEST_SAMPLE_BLOCKS??6);
  if(!Number.isInteger(days)||days<1||days>28||!Number.isInteger(samples)||samples<3||samples>12)
   throw Error('Digest configuration must be 1-28 days and 3-12 samples per period');
  return {days,samples,cron:'0 0 * * 1',network:'Pharos Mainnet',chainId:1672};
@@ -30,6 +30,24 @@ export async function lowerBound(fetchBlock,latest,targetTime){
   if(b.timestamp<targetTime)low=middle+1;else high=middle;
  }
  return low;
+}
+export async function locateTime(fetchBlock,latest,targetTime,secondsPerBlock,maxAttempts=5){
+ if(!(secondsPerBlock>0))throw Error('Unable to estimate recent block time');
+ let guess=Math.max(1,Math.min(latest.number,Math.round(latest.number+(targetTime-latest.timestamp)/secondsPerBlock)));
+ let last=null;
+ for(let i=0;i<maxAttempts;i++){
+  const block=await fetchBlock(guess);
+  last=block;
+  const delta=targetTime-block.timestamp;
+  if(Math.abs(delta)<=180)return block.number;
+  const shift=Math.round(delta/secondsPerBlock);
+  if(shift===0)break;
+  const next=Math.max(1,Math.min(latest.number,guess+shift));
+  if(next===guess)break;
+  guess=next;
+ }
+ if(last&&Math.abs(last.timestamp-targetTime)<=600)return last.number;
+ throw Error('Could not find a block sufficiently close to the requested period boundary');
 }
 export function sampleHeights(start,end,count){
  if(end<start)throw Error('Invalid sample block boundaries');
@@ -87,35 +105,69 @@ export async function buildDigest(env={},connectFn=connect,now=Date.now()){
   }
   const tip=await blockAt(latestNumber);
   const t0=tip.timestamp,from=t0-settings.days*DAY,previousFrom=t0-settings.days*2*DAY;
-  const currentStart=await lowerBound(blockAt,tip,from);
-  const previousStart=await lowerBound(blockAt,tip,previousFrom);
+  // A full binary search takes ~50 external requests and exceeds the
+  // Cloudflare Workers Free cap. Estimate local block time from one
+  // historical anchor, then make at most 5 corrective calls per boundary.
+  const anchor=await blockAt(Math.max(1,latestNumber-1000000));
+  const secondsPerBlock=(tip.timestamp-anchor.timestamp)/(tip.number-anchor.number);
+  const currentStart=await locateTime(blockAt,tip,from,secondsPerBlock);
+  const previousStart=await locateTime(blockAt,tip,previousFrom,secondsPerBlock);
   if(previousStart>=currentStart || currentStart>=latestNumber)throw Error('Periods do not have enough historical blocks');
   const nowBlocks=[];
   for(const id of sampleHeights(currentStart,latestNumber,settings.samples))nowBlocks.push(await blockAt(id));
   const priorBlocks=[];
   for(const id of sampleHeights(previousStart,currentStart-1,settings.samples))priorBlocks.push(await blockAt(id));
   const current=summarize(nowBlocks),previous=summarize(priorBlocks);
-  // Keep comparison metrics based on exactly eight evenly spaced blocks per period.
-  // For the notable-events panel, probe additional verifiable blocks to avoid
-  // misleadingly highlighting empty blocks when the network is quiet.
-  const candidates=[...nowBlocks],sampleAnchors=nowBlocks.map(x=>x.number),seen=new Set(sampleAnchors);
-  const positive=()=>candidates.filter(x=>x.transactionCount>0).length;
-  for(let i=0;i<36 && positive()<3;i++){
-   const anchor=sampleAnchors[i%sampleAnchors.length];
-   const next=Math.min(latestNumber,anchor+1+Math.floor(i/sampleAnchors.length)*97);
-   if(seen.has(next))continue;
-   seen.add(next);
-   const eventBlock=await blockAt(next);
-   candidates.push(eventBlock);
+  // Comparison samples are fixed. To find meaningful events without
+  // exceeding Cloudflare's 50 outbound-subrequest Free limit, query
+  // event logs in four small, evenly distributed windows (<=1000 blocks).
+  // Then confirm the candidate blocks through get_block.
+  const candidates=[...nowBlocks],seen=new Set(nowBlocks.map(x=>x.number));
+  let logWindowsChecked=0;
+  if(tools.some(t=>t.name==='get_logs')){
+   const buckets=new Map();
+   const windows=nowBlocks.filter((_,i)=>i%2===0).slice(0,3).concat(nowBlocks.slice(-1));
+   for(const b of windows){
+    const fromBlock=Math.max(currentStart,b.number-400);
+    const toBlock=Math.min(latestNumber,fromBlock+799);
+    try{
+     const logs=await client.tool('get_logs',{
+      fromBlock:'0x'+fromBlock.toString(16),toBlock:'0x'+toBlock.toString(16)});
+     logWindowsChecked++;
+     if(!Array.isArray(logs))continue;
+     for(const log of logs){
+      if(typeof log?.blockNumber!=='string')continue;
+      const n=quantity(log.blockNumber);
+      if(n<currentStart||n>latestNumber)continue;
+      buckets.set(n,(buckets.get(n)||0)+1);
+     }
+    }catch{
+     // Some RPC providers reject broad log filters; no invented events.
+    }
+   }
+   for(const [n] of [...buckets].sort((a,b)=>b[1]-a[1]).slice(0,10)){
+    if(candidates.filter(x=>x.transactionCount>0).length>=3)break;
+    if(seen.has(n))continue;seen.add(n);
+    const b=await blockAt(n);
+    if(b.transactionCount>0)candidates.push(b);
+   }
+  }
+  // Fallback: inspect at most ten additional blocks if the log index
+  // cannot produce three distinct active block observations.
+  const anchors=nowBlocks.map(x=>x.number);
+  for(let i=0;i<10 && candidates.filter(x=>x.transactionCount>0).length<3;i++){
+   const n=Math.min(latestNumber,anchors[i%anchors.length]+1+Math.floor(i/anchors.length)*37);
+   if(seen.has(n))continue;seen.add(n);
+   const b=await blockAt(n);
+   if(b.transactionCount>0)candidates.push(b);
   }
   const events=highlights(candidates);
-
   const created=new Date(now).toISOString();
   const report={id:'pharos-'+Math.floor(t0/(settings.days*DAY))+'-'+latestNumber,
    publishedAtUtc:created,asOfBlock:tip.number,asOfBlockTimeUtc:new Date(t0*1000).toISOString(),
    title:'Pharos Weekly Digest',chainId:1672,network:settings.network,
    source:{name:'Official Pharos Chain MCP',endpoint:MCP_URL,tool:'get_block',url:'https://github.com/PharosNetwork/pharos-mcp'},
-   settings:{windowDays:settings.days,sampleBlocksPerPeriod:settings.samples,cronUtc:settings.cron,eventDiscoveryVersion:2,eventCandidatesScanned:candidates.length},
+   settings:{windowDays:settings.days,sampleBlocksPerPeriod:settings.samples,cronUtc:settings.cron,eventDiscoveryVersion:3,eventCandidatesScanned:candidates.length,logWindowsChecked},
    periods:{current:{startUtc:new Date(from*1000).toISOString(),endUtc:new Date(t0*1000).toISOString(),
      fromBlock:currentStart,toBlock:tip.number},
     previous:{startUtc:new Date(previousFrom*1000).toISOString(),endUtc:new Date(from*1000).toISOString(),
@@ -126,7 +178,7 @@ export async function buildDigest(env={},connectFn=connect,now=Date.now()){
      current.avgTransactionsPerSample<previous.avgTransactionsPerSample?
      'The sampled blocks had fewer transactions on average than the previous period.':
      'The average transaction count per sampled block was unchanged.',
-   limitations:'Sampling only: the figures are based on individual blocks spread across each period, NOT all transactions or total network throughput. Top events are the busiest blocks among a separate set of verified event-candidate samples, not the three biggest events on the full chain. A quiet block is explicitly labeled if fewer than three active blocks were found. No wallet-level activity is analyzed.'};
+   limitations:'Sampling only: the figures are based on individual blocks spread across each period, NOT all transactions or total network throughput. Top events are the busiest blocks among a small, separately verified set of event-log candidates and block samples, not the three biggest events on the full chain. A quiet block is explicitly labeled if fewer than three active blocks were found. No wallet-level activity is analyzed.'};
   if(events.length!==3)throw Error('Could not select three verified sampled event blocks');
   return report;
  }finally{await client.close();}

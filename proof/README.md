@@ -5,7 +5,7 @@ The task is 100 points +50 optional video. Score only supported claims.
 | Requirement | Code and proof |
 |---|---|
 | Periodic schedule (weekly default, configurable) | `wrangler.jsonc` Cron Trigger `0 0 * * 1` UTC; `src/worker.mjs` `scheduled()`. Edit cron and `DIGEST_WINDOW_DAYS` to configure; verify live future runs in Cloudflare Cron Events logs. |
-| Key metrics vs previous period | `src/digest.mjs` independently samples and summarizes two timestamp-defined windows via actual Chain MCP `get_block`. On-screen relative deltas for 3 metrics. |
+| Key metrics vs previous period | `src/digest.mjs` independently samples and summarizes two approximately time-aligned windows via actual Chain MCP `get_block`. On-screen relative deltas for 3 metrics. |
 | Three notable events | Top 3 busiest **sampled** current-period blocks; sourced to actual block explorer URLs and timestamps, no inflated full-network claim. |
 | Delivery to real channel | Public `/reports/<digest-id>` via persistent SQLite-backed Durable Object and `/api/history`. Reload to confirm not just browser cache. |
 

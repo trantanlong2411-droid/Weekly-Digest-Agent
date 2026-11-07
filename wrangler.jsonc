@@ -14,7 +14,7 @@
   },
   "vars": {
     "DIGEST_WINDOW_DAYS": "7",
-    "DIGEST_SAMPLE_BLOCKS": "8"
+    "DIGEST_SAMPLE_BLOCKS": "6"
   },
   "durable_objects": {
     "bindings": [

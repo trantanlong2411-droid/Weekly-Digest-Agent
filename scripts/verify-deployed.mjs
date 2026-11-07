@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 const base=(process.env.WORKER_URL||'https://weekly-digest-agent.trantanlong2411.workers.dev').replace(/\/$/,'');
-const version='weekly-digest-pharos-2026-11-07-v1';
+const version='weekly-digest-pharos-2026-11-07-v2';
 async function call(path,method='GET'){
  const r=await fetch(base+path,{method,signal:AbortSignal.timeout(180000),cache:'no-store',
   redirect:'manual'});const raw=await r.text();
@@ -20,7 +20,7 @@ assert.equal(health.data.config.days,7);
 assert.match(health.data.schedule,/Monday/);
 let latest=await call('/api/latest');
 assert.equal(latest.status,200);
-if(!latest.data.report || latest.data.report.settings?.eventDiscoveryVersion!==2){
+if(!latest.data.report || latest.data.report.settings?.eventDiscoveryVersion!==3){
  console.log('FIRST_PUBLISH: creating initial report via live Chain MCP');
  const generate=await call('/api/generate','POST');
  if(generate.status===409 && generate.data.reason?.includes('already being generated')){
@@ -39,8 +39,8 @@ if(!latest.data.report || latest.data.report.settings?.eventDiscoveryVersion!==2
 }
 assert.equal(latest.status,200);const digest=latest.data.report;
 assert.ok(digest?.id);assert.equal(digest.chainId,1672);
-assert.equal(digest.settings.eventDiscoveryVersion,2);
-assert.equal(digest.current.sampledBlocks,8);assert.equal(digest.previous.sampledBlocks,8);
+assert.equal(digest.settings.eventDiscoveryVersion,3);
+assert.equal(digest.current.sampledBlocks,6);assert.equal(digest.previous.sampledBlocks,6);
 assert.equal(digest.top3Events.length,3);
 assert.ok(digest.top3Events.every(e=>e.url.includes('/block/')&&Number.isInteger(e.transactions)));
 assert.match(digest.limitations,/NOT all transactions/);

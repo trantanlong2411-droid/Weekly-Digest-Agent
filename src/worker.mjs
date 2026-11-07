@@ -1,7 +1,7 @@
 import {buildDigest,config} from './digest.mjs';
 import {PAGE} from './page.mjs';
 const json=(data,status=200)=>Response.json(data,{status,headers:{'cache-control':'no-store','x-content-type-options':'nosniff'}});
-export const VERSION='weekly-digest-pharos-2026-11-07-v1';
+export const VERSION='weekly-digest-pharos-2026-11-07-v2';
 export class DigestStore {
  constructor(ctx,env){this.ctx=ctx;this.env=env;}
  async fetch(request){
@@ -11,7 +11,7 @@ export class DigestStore {
    const {manual}=await request.json(),now=Date.now();
    const lock=await storage.get('lock'),current=await storage.get('latest');
    if(lock && now-lock.at<240000)return json({granted:false,reason:'A digest is already being generated'});
-   if(manual && current && current.settings?.eventDiscoveryVersion>=2 && now-Date.parse(current.publishedAtUtc)<21600000)
+   if(manual && current && current.settings?.eventDiscoveryVersion>=3 && now-Date.parse(current.publishedAtUtc)<21600000)
     return json({granted:false,reason:'Published digest is less than 6 hours old',latest:current.id});
    await storage.put('lock',{at:now});
    return json({granted:true});

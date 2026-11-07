@@ -10,13 +10,13 @@ An automated, public, read-only **Pharos Mainnet protocol-network digest** publi
 
 ## What it does
 1. **Runs on a schedule:** Cloudflare Cron Trigger `0 0 * * 1` runs **every Monday at 00:00 UTC**. To change frequency, edit `wrangler.jsonc > triggers.crons`; change the analysis window with `DIGEST_WINDOW_DAYS` (1–28), and block samples with `DIGEST_SAMPLE_BLOCKS` (3–12).
-2. **Compares current and previous periods:** Real read-only official Pharos Chain MCP calls find the timestamp-aligned block boundaries for each `N`-day period, fetch `8` evenly distributed blocks in each, and compare per-sampled-block average transaction count, average gas used, and peak transaction count.
+2. **Compares current and previous periods:** Real read-only official Pharos Chain MCP calls find the timestamp-aligned block boundaries for each `N`-day period, fetch `6` evenly distributed blocks in each, and compare per-sampled-block average transaction count, average gas used, and peak transaction count.
 3. **Three notable events:** Top **three highest transaction-count blocks among the sampled current-period blocks**, each with block number, gas used, UTC timestamp and explorer link. These are **observed activity hotspots**, **not** the top events across every block of the week.
 4. **Delivered to a real channel:** Every successful scheduled run is saved in **Cloudflare SQLite-backed Durable Objects** and displayed on the public published page with permanent URLs `/reports/<id>`, historical list and JSON evidence. No API keys or admin password are required for reviewers to read digests.
 
 ### Important sampling limitations
 
-The hosted [Pharos Chain MCP](https://github.com/PharosNetwork/pharos-mcp) supports `get_chain_info` and `get_block` but does **not** provide historical per-wallet transaction indexing. Since the owner did not specify a wallet address, this agent monitors **Pharos protocol network-level activity** by sampling eight blocks per period. It does **not** claim full-chain weekly transaction totals, actual wallet balances or full transaction histories. All metrics are explicitly labeled sampled. Values and rankings can differ from complete-chain analytics.
+The hosted [Pharos Chain MCP](https://github.com/PharosNetwork/pharos-mcp) supports `get_chain_info` and `get_block` but does **not** provide historical per-wallet transaction indexing. Since the owner did not specify a wallet address, this agent monitors **Pharos protocol network-level activity** by sampling six blocks per period. It does **not** claim full-chain weekly transaction totals, actual wallet balances or full transaction histories. All metrics are explicitly labeled sampled. Values and rankings can differ from complete-chain analytics.
 
 This is a real live integration — no fabricated numbers, no fake published digests. If Chain MCP fails, no digest is written.
 
@@ -59,3 +59,5 @@ See `proof/README.md` and the GitHub Actions [CI run history](https://github.com
 - [Cloudflare Scheduled Handler](https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/)
 - [Cloudflare Durable Object SQLite storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)
 - [Cloudflare Declarative Durable Object exports](https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/)
+
+**Cloudflare Free limits:** The Worker uses a local block-time estimate plus bounded timestamp refinement, six metrics samples per period, and at most four event-log windows with ten bounded fallback probes to stay below the Free plan's external subrequest allowance. Period boundaries are approximate (within a few minutes), not exhaustive network indexes.
