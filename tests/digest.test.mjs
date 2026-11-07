@@ -14,15 +14,15 @@ test('normalizes actual block format and handles absent transactions honestly',(
  assert.throws(()=>normalizeBlock({number:'0x1',timestamp:'0x2',gasUsed:'0x0'}));
 });
 test('time boundary search uses real block timestamps',async()=>{
- const got=await lowerBound(async n=>({timestamp:n*30}),1000,3001);
+ const got=await lowerBound(async n=>({timestamp:n*30}),{number:1000},3001);
  assert.equal(got,101);
 });
 test('sampling does not claim an exhaustive weekly transaction total',()=>{
  const heights=sampleHeights(1,100,8);
  assert.equal(heights.length,8);assert.ok(heights[0]>1);
- const current=summarize([{number:1,transactionCount:2,gasUsed:1000000,gasMillion:1,explorer:'a'},{
-  number:2,transactionCount:10,gasUsed:3000000,gasMillion:3,explorer:'b'},{
-  number:3,transactionCount:6,gasUsed:2000000,gasMillion:2,explorer:'c'}]);
+ const current=summarize([{number:1,transactionCount:2,gasUsed:1000000,gasMillion:1,timestamp:100,explorer:'a'},{
+  number:2,transactionCount:10,gasUsed:3000000,gasMillion:3,timestamp:200,explorer:'b'},{
+  number:3,transactionCount:6,gasUsed:2000000,gasMillion:2,timestamp:300,explorer:'c'}]);
  const previous=summarize([{number:0,transactionCount:3,gasUsed:1000000,gasMillion:1}]);
  assert.equal(current.avgTransactionsPerSample,6);
  assert.equal(compare(current,previous).avgTransactionsPerSample.pct,100);
