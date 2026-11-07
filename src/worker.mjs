@@ -11,7 +11,7 @@ export class DigestStore {
    const {manual}=await request.json(),now=Date.now();
    const lock=await storage.get('lock'),current=await storage.get('latest');
    if(lock && now-lock.at<240000)return json({granted:false,reason:'A digest is already being generated'});
-   if(manual && current && now-Date.parse(current.publishedAtUtc)<21600000)
+   if(manual && current && current.settings?.eventDiscoveryVersion>=2 && now-Date.parse(current.publishedAtUtc)<21600000)
     return json({granted:false,reason:'Published digest is less than 6 hours old',latest:current.id});
    await storage.put('lock',{at:now});
    return json({granted:true});
