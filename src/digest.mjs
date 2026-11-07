@@ -63,7 +63,7 @@ export function compare(current,previous){
 }
 export function highlights(blocks){
  return [...blocks].sort((a,b)=>b.transactionCount-a.transactionCount||b.gasUsed-a.gasUsed)
-  .slice(0,3).map((block,index)=>({rank:index+1,title:'High-activity sampled block #'+block.number,
+  .slice(0,3).map((block,index)=>({rank:index+1,title:(block.transactionCount>0?'Active':'Quiet')+' sampled block #'+block.number,
     detail:'Observed '+block.transactionCount+' transactions, '+block.gasMillion+' million gas used in this sampled block.',
     block: block.number,transactions:block.transactionCount,gasUsed:block.gasUsed,
     timestamp:new Date(block.timestamp*1000).toISOString(),url:block.explorer,
@@ -95,13 +95,27 @@ export async function buildDigest(env={},connectFn=connect,now=Date.now()){
   const priorBlocks=[];
   for(const id of sampleHeights(previousStart,currentStart-1,settings.samples))priorBlocks.push(await blockAt(id));
   const current=summarize(nowBlocks),previous=summarize(priorBlocks);
-  const events=highlights(nowBlocks);
+  // Keep comparison metrics based on exactly eight evenly spaced blocks per period.
+  // For the notable-events panel, probe additional verifiable blocks to avoid
+  // misleadingly highlighting empty blocks when the network is quiet.
+  const candidates=[...nowBlocks],sampleAnchors=nowBlocks.map(x=>x.number),seen=new Set(sampleAnchors);
+  const positive=()=>candidates.filter(x=>x.transactionCount>0).length;
+  for(let i=0;i<36 && positive()<3;i++){
+   const anchor=sampleAnchors[i%sampleAnchors.length];
+   const next=Math.min(latestNumber,anchor+1+Math.floor(i/sampleAnchors.length)*97);
+   if(seen.has(next))continue;
+   seen.add(next);
+   const eventBlock=await blockAt(next);
+   candidates.push(eventBlock);
+  }
+  const events=highlights(candidates);
+
   const created=new Date(now).toISOString();
   const report={id:'pharos-'+Math.floor(t0/(settings.days*DAY))+'-'+latestNumber,
    publishedAtUtc:created,asOfBlock:tip.number,asOfBlockTimeUtc:new Date(t0*1000).toISOString(),
    title:'Pharos Weekly Digest',chainId:1672,network:settings.network,
    source:{name:'Official Pharos Chain MCP',endpoint:MCP_URL,tool:'get_block',url:'https://github.com/PharosNetwork/pharos-mcp'},
-   settings:{windowDays:settings.days,sampleBlocksPerPeriod:settings.samples,cronUtc:settings.cron},
+   settings:{windowDays:settings.days,sampleBlocksPerPeriod:settings.samples,cronUtc:settings.cron,eventDiscoveryVersion:2,eventCandidatesScanned:candidates.length},
    periods:{current:{startUtc:new Date(from*1000).toISOString(),endUtc:new Date(t0*1000).toISOString(),
      fromBlock:currentStart,toBlock:tip.number},
     previous:{startUtc:new Date(previousFrom*1000).toISOString(),endUtc:new Date(from*1000).toISOString(),
@@ -112,7 +126,7 @@ export async function buildDigest(env={},connectFn=connect,now=Date.now()){
      current.avgTransactionsPerSample<previous.avgTransactionsPerSample?
      'The sampled blocks had fewer transactions on average than the previous period.':
      'The average transaction count per sampled block was unchanged.',
-   limitations:'Sampling only: the figures are based on individual blocks spread across each period, NOT all transactions or total network throughput. Top events are the busiest sampled blocks, not the three biggest events on the full chain. No wallet-level activity is analyzed.'};
+   limitations:'Sampling only: the figures are based on individual blocks spread across each period, NOT all transactions or total network throughput. Top events are the busiest blocks among a separate set of verified event-candidate samples, not the three biggest events on the full chain. A quiet block is explicitly labeled if fewer than three active blocks were found. No wallet-level activity is analyzed.'};
   if(events.length!==3)throw Error('Could not select three verified sampled event blocks');
   return report;
  }finally{await client.close();}
