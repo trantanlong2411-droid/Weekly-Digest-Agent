@@ -23,9 +23,19 @@ assert.equal(latest.status,200);
 if(!latest.data.report){
  console.log('FIRST_PUBLISH: creating initial report via live Chain MCP');
  const generate=await call('/api/generate','POST');
- assert.equal(generate.status,200,'Initial generation failed: '+JSON.stringify(generate.data).slice(0,400));
- assert.equal(generate.data.ok,true);
- latest=await call('/api/latest');
+ if(generate.status===409 && generate.data.reason?.includes('already being generated')){
+  console.log('ANOTHER_BUILD_IS_GENERATING: checking persistent report until it is available');
+  for(let attempt=0;attempt<36;attempt++){
+   await new Promise(done=>setTimeout(done,5000));
+   latest=await call('/api/latest');
+   if(latest.data.report)break;
+  }
+ }else{
+  assert.equal(generate.status,200,'Initial generation failed: '+JSON.stringify(generate.data).slice(0,400));
+  assert.equal(generate.data.ok,true);
+  latest=await call('/api/latest');
+ }
+ assert.ok(latest.data.report,'No published report appeared after waiting for the active digest build');
 }
 assert.equal(latest.status,200);const digest=latest.data.report;
 assert.ok(digest?.id);assert.equal(digest.chainId,1672);
