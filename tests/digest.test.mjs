@@ -52,7 +52,7 @@ test('Durable Object persists public digest history',async()=>{
  const object=new DigestStore({storage},{});
  const begin=await (await object.fetch(new Request('https://store/begin',{method:'POST',body:JSON.stringify({manual:true})}))).json();
  assert.equal(begin.granted,true);
- const report={id:'pharos-5-100',publishedAtUtc:new Date().toISOString(),top3Events:[{},{},{}]};
+ const report={id:'pharos-5-100',publishedAtUtc:new Date().toISOString(),settings:{eventDiscoveryVersion:2},top3Events:[{},{},{}]};
  const published=await (await object.fetch(new Request('https://store/publish',{method:'POST',body:JSON.stringify(report)}))).json();
  assert.equal(published.stored,true);
  const saved=await (await object.fetch(new Request('https://store/read'))).json();

@@ -20,7 +20,7 @@ assert.equal(health.data.config.days,7);
 assert.match(health.data.schedule,/Monday/);
 let latest=await call('/api/latest');
 assert.equal(latest.status,200);
-if(!latest.data.report){
+if(!latest.data.report || latest.data.report.settings?.eventDiscoveryVersion!==2){
  console.log('FIRST_PUBLISH: creating initial report via live Chain MCP');
  const generate=await call('/api/generate','POST');
  if(generate.status===409 && generate.data.reason?.includes('already being generated')){
@@ -39,6 +39,7 @@ if(!latest.data.report){
 }
 assert.equal(latest.status,200);const digest=latest.data.report;
 assert.ok(digest?.id);assert.equal(digest.chainId,1672);
+assert.equal(digest.settings.eventDiscoveryVersion,2);
 assert.equal(digest.current.sampledBlocks,8);assert.equal(digest.previous.sampledBlocks,8);
 assert.equal(digest.top3Events.length,3);
 assert.ok(digest.top3Events.every(e=>e.url.includes('/block/')&&Number.isInteger(e.transactions)));
