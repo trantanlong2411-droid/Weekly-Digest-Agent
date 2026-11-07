@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "weekly-digest-agent",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-11-07",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": [
+      "0 0 * * 1"
+    ]
+  },
+  "vars": {
+    "DIGEST_WINDOW_DAYS": "7",
+    "DIGEST_SAMPLE_BLOCKS": "8"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DIGESTS",
+        "class_name": "DigestStore"
+      }
+    ]
+  },
+  "exports": {
+    "DigestStore": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}

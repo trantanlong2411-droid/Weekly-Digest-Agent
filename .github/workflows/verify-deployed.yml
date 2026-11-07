@@ -1,0 +1,18 @@
+name: Weekly Digest Agent — deployed public report verification
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deployed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify real public Worker published digest and history
+        run: node scripts/verify-deployed.mjs
